@@ -1,0 +1,59 @@
+version: '3.8'
+
+volumes:
+  db_storage:
+  n8n_storage:
+  redis_storage:
+
+x-shared: &shared
+  restart: always
+  image: docker.n8n.io/n8nio/n8n
+  environment:
+    - DB_TYPE=postgresdb
+    - DB_POSTGRESDB_HOST=${POSTGRES_HOST}
+    - DB_POSTGRESDB_PORT=${POSTGRES_PORT}
+    - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+    - DB_POSTGRESDB_USER=${POSTGRES_NON_ROOT_USER}
+    - DB_POSTGRESDB_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
+    - DB_POSTGRESDB_SCHEMA=${POSTGRES_SCHEMA}
+    - EXECUTIONS_MODE=queue
+    - QUEUE_BULL_REDIS_HOST=redis
+    - QUEUE_HEALTH_CHECK_ACTIVE=true
+    - N8N_ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+  links:
+    - redis
+  volumes:
+    - n8n_storage:/home/node/.n8n
+  depends_on:
+    redis:
+      condition: service_healthy
+
+services:
+  redis:
+    image: redis:6-alpine
+    restart: always
+    volumes:
+      - redis_storage:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  n8n:
+    <<: *shared
+    ports:
+      - 5678:5678
+
+  n8n-worker-a:
+    <<: *shared
+    command: worker
+    depends_on:
+      - n8n
+  
+  n8n-worker-b:
+    <<: *shared
+    command: worker
+    depends_on:
+      - n8n
